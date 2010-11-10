@@ -12,6 +12,14 @@
 {
 	NSMutableArray *scriptCommands;
 	float scriptRunnerInterCommandDelay;
+	
+	NSMutableArray	*scriptList;
+	NSString		*currentScriptName;
 }
+
+@property (nonatomic, copy)	NSString		*currentScriptName;
+
+- (void)runCommand;
+- (void)runScript;
 
 @end

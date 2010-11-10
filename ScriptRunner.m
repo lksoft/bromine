@@ -12,6 +12,7 @@
 #import "XMLDescription.h"
 #import "XPathQuery.h"
 #import "TouchSynthesis.h"
+#import "NSObject+ClassName.h"
 
 const float SCRIPT_RUNNER_INTER_COMMAND_DELAY = 0.0;
 const float MAX_WAIT_ATTEMPTS = 60;
@@ -20,6 +21,8 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 
 @implementation ScriptRunner
 
+@synthesize currentScriptName;
+
 
 
 //
@@ -27,24 +30,20 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 //
 // Init method for the object.
 //
-- (id)init
-{
+- (id)init {
 	self = [super init];
 	if (self != nil)
 	{
-		NSData *fileData =
-		[NSData dataWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"TestScript" ofType:@"plist"]];
-		scriptCommands =
-		[[NSPropertyListSerialization
-		  propertyListFromData:fileData
-		  mutabilityOption:NSPropertyListMutableContainers
-		  format:nil
-		  errorDescription:nil]
-		 retain];
-		NSAssert([scriptCommands count] > 0, @"TestScript was not an array as expected.");
+		//	Get all bromine scripts
+		scriptList = [[[NSBundle mainBundle] pathsForResourcesOfType:@"brscript" inDirectory:nil] mutableCopy];
+
+		//	First assert that there are some tests to run
+		NSAssert((scriptList != nil) && ([scriptList count] > 0), @"\n\n****\nNo Bromine Scripts were provided for the run\n****\n\n");
+		NSLog(@"\n\n****\nFound %d Bromine Scripts to Run\n****\n\n", [scriptList count]);
 		
+		//	Retain ourselves to ensure that we don't go away
 		[self retain];
-		[self performSelector:@selector(runCommand) withObject:nil afterDelay:1.0];
+		[self performSelector:@selector(runScript) withObject:nil afterDelay:1.0];
 		
 	}
 	return self;
@@ -55,10 +54,12 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 //
 // Releases instance memory.
 //
-- (void)dealloc
-{
+- (void)dealloc {
 	[scriptCommands release];
+	self.currentScriptName = nil;
+
 	[super dealloc];
+	[scriptList release];
 }
 
 //
@@ -295,7 +296,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 		exit(1);
 	}
 	
-	printf("=== checkMatchCount\n    viewXPath:\n        %s\n    matchCount: %ld\n",
+	printf("=== checkMatchCount\n    viewXPath:\n        %s\n    matchCount: %d\n",
 		   [viewXPath cStringUsingEncoding:NSUTF8StringEncoding],
 		   [matchCount integerValue]);
 	
@@ -304,7 +305,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	{
 		fprintf(
 				stderr,
-				"### 'checkMatchCount' wanted a matching count of %ld but encountered %ld\n",
+				"### 'checkMatchCount' wanted a matching count of %d but encountered %d\n",
 				[matchCount integerValue],
 				[views count]);
 		exit(1);
@@ -337,7 +338,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	{
 		fprintf(
 				stderr,
-				"### 'viewXPath' for command 'simulateTouch' selected %ld nodes, where exactly 1 is required.\n",
+				"### 'viewXPath' for command 'simulateTouch' selected %d nodes, where exactly 1 is required.\n",
 				[views count]);
 		exit(1);
 	}
@@ -416,7 +417,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	 indexPathForRow:[rowIndex integerValue]
 	 inSection:[sectionIndex integerValue]];
 	
-	printf("=== scrollToRow\n    viewXPath:\n        %s\n    indexPath: (section: %ld, row: %ld)\n",
+	printf("=== scrollToRow\n    viewXPath:\n        %s\n    indexPath: (section: %d, row: %d)\n",
 		   [viewXPath cStringUsingEncoding:NSUTF8StringEncoding],
 		   [indexPath section],
 		   [indexPath row]);
@@ -426,7 +427,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	{
 		fprintf(
 				stderr,
-				"### 'viewXPath' for command 'scrollToRow' selected %ld nodes, where exactly 1 is required.\n",
+				"### 'viewXPath' for command 'scrollToRow' selected %d nodes, where exactly 1 is required.\n",
 				[views count]);
 		exit(1);
 	}
@@ -481,7 +482,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	{
 		fprintf(
 				stderr,
-				"### 'viewXPath' for command 'assertText' selected %ld nodes, where exactly 1 is required.\n",
+				"### 'viewXPath' for command 'assertText' selected %d nodes, where exactly 1 is required.\n",
 				[views count]);
 		exit(1);
 	}
@@ -545,7 +546,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	{
 		fprintf(
 				stderr,
-				"### 'viewXPath' for command 'setText' selected %ld nodes, where exactly 1 is required.\n",
+				"### 'viewXPath' for command 'setText' selected %d nodes, where exactly 1 is required.\n",
 				[views count]);
 		exit(1);
 	}
@@ -598,8 +599,7 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 //	- outputView (writes the XML for a view hierarchy to a file)
 //	- simulateTouch (selects a UIView by XPath and simulates a touch within it)
 //
-- (void)runCommand
-{
+- (void)runCommand {
 	NSDictionary *command = [scriptCommands objectAtIndex:0];
 	NSString *commandName = [[command objectForKey:@"command"] stringByAppendingString:@":"];
 	
@@ -623,21 +623,64 @@ const float BACKBUTTON_WAIT_DELAY = 0.75;
 	//
 	// Exit the program when complete
 	//
-	if ([scriptCommands count] == 0)
+/*	if ([scriptCommands count] == 0)
 	{
 		[self release];
 		exit(0);
 	}
 	else
 	{
-		//
+*/		//
 		// If further commands remain, queue the next one
 		//
 		[self
 		 performSelector:@selector(runCommand)
 		 withObject:nil
 		 afterDelay:scriptRunnerInterCommandDelay];
+//	}
+}
+
+
+- (void)runScript {
+	
+	//	No current commands, start processing the next file
+	if ((scriptCommands == nil) || ([scriptCommands count] == 0)) {
+		
+		//	If there are no more commands and no more scripts, terminate
+		if ([scriptList count] == 0) {
+			NSLog(@"\n\n****\nFinished processing Bromine Suite of Scripts\n****\n\n");
+			exit(0);
+		}
+
+		//	If there is a current name, give a done message
+		if (self.currentScriptName) {
+			NSLog(@"Done Running Bromine Script - %@", self.currentScriptName);
+		}
+		
+		//	Otherwise process the next file in the list
+		NSString	*scriptPath = [scriptList objectAtIndex:0];
+		self.currentScriptName = [[scriptPath lastPathComponent] stringByDeletingPathExtension];
+		NSLog(@"Starting Bromine Script - %@", self.currentScriptName);
+		
+		//	Get the file contents and validate that they are not empty
+		NSData	*scriptData = [NSData dataWithContentsOfFile:scriptPath];
+		NSAssert(scriptData != nil, @"The contents of the Bromine script:\n%@\n\t were empty");
+		
+		//	Parse out the object and assert that it is any array
+		scriptCommands = [[NSPropertyListSerialization propertyListFromData:scriptData mutabilityOption:NSPropertyListMutableContainers format:nil errorDescription:nil] retain];
+		NSAssert([scriptCommands count] > 0, @"There are no values to run in the Bromine script: %@", self.currentScriptName);
+		
+		//	Start Processing the file
+		[self runCommand];
+		
+		//	Reomve this script from the list
+		[scriptList removeObjectAtIndex:0];
+		
 	}
+	
+	//	Always run again after 5 seconds
+	[self performSelector:@selector(runScript) withObject:nil afterDelay:5.0f];
+	
 }
 
 @end
